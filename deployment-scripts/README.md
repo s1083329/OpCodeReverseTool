@@ -15,7 +15,7 @@ This repository contains automation scripts for deploying environments for IDA P
 To use these deployment scripts, clone the repository and run the desired script according to the tool you wish to set up. Ensure you have the necessary permissions to execute the scripts on your system.
 
 ```bash
-git clone https://your-repository-url.git
+git clone https://github.com/louiskyee/OpCodeReverseTool.git
 cd deployment-scripts
 ./<script_name>.sh
 ```
