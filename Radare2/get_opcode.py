@@ -6,7 +6,6 @@ import argparse
 import pandas as pd
 
 from tqdm import tqdm
-from multiprocessing import cpu_count
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def configure_logging(input_dir: str) -> tuple:
@@ -43,7 +42,7 @@ def configure_logging(input_dir: str) -> tuple:
 
 def extraction(input_file_path: str, output_csv_path: str, file_name: str, extraction_logger: logging.Logger, timing_logger: logging.Logger) -> float:
     """
-    Extract address and opcode information from the specified file and save it to a CSV file.
+    Extract address and opcode information from each section of the specified file and save it to a CSV file, categorized by sections.
 
     Args:
         input_file_path (str): File path of the target file.
@@ -64,14 +63,25 @@ def extraction(input_file_path: str, output_csv_path: str, file_name: str, extra
     r2 = None
     try:
         r2 = r2pipe.open(input_file_path, flags=["-2"])
-        r2.cmd("aaaa")
-        df = pd.DataFrame(r2.cmdj("pDj $SS@$S"))
+        r2.cmd("aaa")  # Enhanced analysis
+        sections = r2.cmdj('iSj')  # Get sections as JSON
+        all_opcodes = []
 
+        for section in sections:
+            if section['size'] > 0:  # Only process sections with size
+                opcodes = r2.cmdj(f"pDj {section['size']} @{section['vaddr']}")
+                if opcodes:
+                    for opcode in opcodes:
+                        all_opcodes.append({
+                            'addr': opcode['offset'],
+                            'opcode': opcode['opcode'].split()[0] if 'opcode' in opcode else '',
+                            'section_name': section['name']
+                        })
+
+        df = pd.DataFrame(all_opcodes)
         if df.empty:
             raise ValueError(f"No valid disassembly found for file: {input_file_path}")
 
-        df['opcode'] = df['opcode'].str.split().str[0]
-        df = df[['offset', 'opcode']].rename(columns={'offset': 'addr'})
         df.to_csv(output_csv_path, index=False)
 
     except FileNotFoundError:
@@ -86,6 +96,7 @@ def extraction(input_file_path: str, output_csv_path: str, file_name: str, extra
         end_time = time.time()
         execution_time = end_time - start_time
         timing_logger.info(f"{file_name},{execution_time:.2f} seconds")
+        return execution_time
 
 def get_args(binary_path: str, output_path: str, extraction_logger: logging.Logger, timing_logger: logging.Logger) -> list:
     """
@@ -116,8 +127,8 @@ def parallel_process(args: list) -> None:
 
     Args:
         args (list): A list of tuples containing the binary file path, output file path, file name, and loggers.
-    """    
-    with ProcessPoolExecutor(max_workers=cpu_count()) as executor:
+    """
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
         futures = [executor.submit(extraction, *arg) for arg in args]
         for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing files", unit="file"):
             pass
