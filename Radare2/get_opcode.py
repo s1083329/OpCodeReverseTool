@@ -61,22 +61,35 @@ def extraction(input_file_path: str, output_csv_path: str, file_name: str, extra
     """
     start_time = time.time()
     r2 = None
+
     try:
         r2 = r2pipe.open(input_file_path, flags=["-2"])
         r2.cmd("aaa")  # Enhanced analysis
+
         sections = r2.cmdj('iSj')  # Get sections as JSON
         all_opcodes = []
 
-        for section in sections:
-            if section['size'] > 0:  # Only process sections with size
-                opcodes = r2.cmdj(f"pDj {section['size']} @{section['vaddr']}")
-                if opcodes:
-                    for opcode in opcodes:
-                        all_opcodes.append({
-                            'addr': opcode['offset'],
-                            'opcode': opcode['opcode'].split()[0] if 'opcode' in opcode else '',
-                            'section_name': section['name']
-                        })
+        if sections:
+            for section in sections:
+                if section['size'] > 0:  # Only process sections with size
+                    opcodes = r2.cmdj(f"pDj {section['size']} @{section['vaddr']}")
+                    if opcodes:
+                        for opcode in opcodes:
+                            all_opcodes.append({
+                                'addr': opcode['offset'],
+                                'opcode': opcode['opcode'].split()[0] if 'opcode' in opcode else '',
+                                'section_name': section['name']
+                            })
+        else:
+            # No sections found, use 'pdj $s' to disassemble the entire file
+            opcodes = r2.cmdj("pdj $s")
+            if opcodes:
+                for opcode in opcodes:
+                    all_opcodes.append({
+                        'addr': opcode['offset'],
+                        'opcode': opcode['opcode'].split()[0] if 'opcode' in opcode else '',
+                        'section_name': '.no_section'
+                    })
 
         df = pd.DataFrame(all_opcodes)
         if df.empty:
@@ -93,10 +106,10 @@ def extraction(input_file_path: str, output_csv_path: str, file_name: str, extra
     finally:
         if r2:
             r2.quit()
-        end_time = time.time()
-        execution_time = end_time - start_time
-        timing_logger.info(f"{file_name},{execution_time:.2f} seconds")
-        return execution_time
+
+    end_time = time.time()
+    execution_time = end_time - start_time
+    timing_logger.info(f"{file_name},{execution_time:.2f} seconds")
 
 def get_args(binary_path: str, output_path: str, extraction_logger: logging.Logger, timing_logger: logging.Logger) -> list:
     """
